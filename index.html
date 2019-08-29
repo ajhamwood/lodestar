@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+  <title>Lodestar</title>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <meta name='keywords' content='lodestar, AR, compass, map'>
+  <meta name='description' content='Lodestar is an Augmented Reality map assistant.'>
+  <link rel='icon' type='image/x-icon' href='data:image/x-icon;base64,'>
+  <link rel='stylesheet' href='app.css'>
+</head>
+<body>
+  <header id='debug'></header>
+  <section id='destSelect' class='active'>
+    <div class='padded-multiline'>
+      <span id='title'></span>
+    </div>
+    <div id="map"></div>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><path d="M172.268 501.67C26.97 291.031 0 269.413 0 192 0 85.961 85.961 0 192 0s192 85.961 192 192c0 77.413-26.97 99.031-172.268 309.67-9.535 13.774-29.93 13.773-39.464 0zM192 272c44.183 0 80-35.817 80-80s-35.817-80-80-80-80 35.817-80 80 35.817 80 80 80z"/></svg>
+  </section>
+  <section id='arFeedback'>
+    <div id='ar' class='feedback active'>
+      <video></video>
+      <canvas id='arGUI'></canvas>
+    </div>
+    <div id='destMap' class='feedback'></div>
+    <div id='displayToggle'>Show map</div>
+  </section>
+  <script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v5.3.0/build/ol.js"></script>
+  <script src='https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/build/three.min.js'></script>
+  <script src='https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/js/loaders/GLTFLoader.js'></script>
+  <script src='utils.js'></script>
+  <script src='app.js' defer> </script>
+  <noscript><h6>Only viewable with JavaScript enabled.</h6></noscript>
+</body>
+</html>

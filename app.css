@@ -1,0 +1,76 @@
+html, body { height: 100% }
+body { margin: 0 }
+
+.hide { display: none }
+.blur { opacity: .2 }
+#debug {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  font: bold 1.2rem sans;
+  z-index: 2;
+  color: red;
+  background: white }
+
+section {
+  display: none;
+  height: 100% }
+section.active { display: block }
+
+.padded-multiline {
+  position: absolute;
+  display: inline;
+  top: 5vh;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  font-size: calc(2vw + 2vh);
+  text-align: center;
+
+  line-height: 1.5;
+  padding: 2px 0;
+  margin: 20px auto }
+.padded-multiline > span {
+  background-color: #c0c;
+  color: #fff;
+  display: inline;
+  padding: 0.45rem;
+
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  cursor: pointer;
+  user-select: none }
+
+
+#map, #destMap { height: 100% }
+svg {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  height: 8vh;
+  transform: translateX(-50%);
+  fill: red;
+  z-index: 1 }
+
+.feedback { display: none }
+.feedback.active { display: block }
+video { position: absolute }
+canvas {
+  position: absolute;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0 }
+
+#displayToggle {
+  font-size: 3vh;
+  border: 0;
+  position: absolute;
+  bottom: 5vh;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: .5vh 1.5vh;
+  cursor: pointer;
+  z-index: 2 }
