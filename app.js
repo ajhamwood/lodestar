@@ -1,4 +1,5 @@
-// Page state
+// App state
+
 var app = new $.Machine({
   map: null,
   mapElement: $('#map')[0],
@@ -14,7 +15,9 @@ var app = new $.Machine({
   geo: { latitude: null, longitude: null }
 });
 
+
 // Events
+
 $.targets({
 
   load () {
@@ -39,6 +42,8 @@ $.targets({
 
   app: {
 
+    // Begin app at destination selector screen
+
     init () {
       this.map = initMap();
       let photoCanvas = this.photoCanvas = document.createElement('canvas');
@@ -47,6 +52,9 @@ $.targets({
       for (let c of 'Where do you want to go today?')
         $.pipe('title', () => new Promise(r => setTimeout(() => r($('#title')[0].textContent += c), 50)))
     },
+
+
+    // ***
 
     chooseDest () {
       let body = new FormData(),
@@ -69,6 +77,9 @@ $.targets({
         })
     },
 
+
+    // Draw a marker on the map
+
     setMarker (lat, lng) {
       this.marker = new ol.Feature({
         geometry: new ol.geom.Point(
@@ -80,15 +91,23 @@ $.targets({
       this.map.addLayer(markerVectorLayer)
     },
 
+
+    // Set map zoom to include current and destination locations
+
     setZoom () {
       let { latitude } = this.destination,
-          vmin = Math.min(document.body.clientHeight, document.body.clientWidth) / 2;
-      let { distance } = app.distanceBearingFromLatLng();
-      this.map.getView().setZoom(getZoomLevel(latitude, distance, vmin));
+          vmin = Math.min(document.body.clientHeight, document.body.clientWidth) / 2,
+          { distance } = app.distanceBearingFromLatLng(),
+          raw = Math.log(vmin * 156543.03392 * Math.cos(latitude * Math.PI / 180) / distance) / Math.LN2,
+          zoomLevel = Math.max(Math.min(Math.floor(raw), 20), 1);
+      this.map.getView().setZoom(zoomLevel);
     },
 
+
+    // Advance to map marker page
+
     showDest () {
-      let {latitude, longitude} = this.destination;
+      let { latitude, longitude } = this.destination;
       $('#destMap')[0].append(this.mapElement.childNodes[0])
       this.mapElement = $('#destMap')[0];
       //this.map.
@@ -104,6 +123,9 @@ $.targets({
       );
     },
 
+
+    // Pulse data to server
+
     heartbeat (on) {
       this.heartbeat = on ?
         this.iv = setTimeout(() => $.pipe('heartbeat',
@@ -111,6 +133,9 @@ $.targets({
           () => app.emitAsync('heartbeat', this.heartbeat)), 1000) :
         clearTimeout(this.iv)
     },
+
+
+    // Send data to server once
 
     sendData () {
       let body = new FormData();
@@ -126,7 +151,7 @@ $.targets({
     },
 
 
-    // Camera image
+    // Update canvas sizes
 
     resize () { // Change image resolution here
       let { clientWidth, clientHeight } = document.body;
@@ -150,10 +175,11 @@ $.targets({
 
 
     // Camera
+
     startCamera () {
       if (navigator.mediaDevices.getUserMedia) {
         return navigator.mediaDevices.getUserMedia({
-          video: { width: 4800, height: 6400/*, facingMode: { exact: 'environment' }*/ }
+          video: { width: 4800, height: 6400, facingMode: { exact: 'environment' } }
         }).then(s => {
           this.video.srcObject = s;
           this.video.onloadedmetadata = () => this.video.play();
@@ -163,6 +189,7 @@ $.targets({
 
 
     // Debug
+
     debug (...strings) { $('#debug')[0].textContent = strings.join(' ') }
 
   }
@@ -186,6 +213,9 @@ $.queries({
   }
 });
 
+
+// Set up OpenLayers map
+
 function initMap (interaction = ol.interaction.defaults()) {
   return new ol.Map({
     target: app.state().mapElement,
@@ -202,10 +232,8 @@ function initMap (interaction = ol.interaction.defaults()) {
   })
 }
 
-function getZoomLevel (lat, distance, vmin) {
-  let raw = Math.log(vmin * 156543.03392 * Math.cos(lat * Math.PI / 180) / distance) / Math.LN2;
-  return Math.max(Math.min(Math.floor(raw), 20), 1)
-}
+
+// Calculate distance and bearing give current and destination latitude and longitude
 
 app.distanceBearingFromLatLng = function (degLat1, degLon1, degLat2, degLon2) {
   if (arguments.length === 0) {
@@ -233,50 +261,19 @@ app.distanceBearingFromLatLng = function (degLat1, degLon1, degLat2, degLon2) {
       c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)),
       y = Math.sin(dLon) * Math.cos(lat2),
       x = Math.cos(lat1) * Math.sin(lat2) -
-            Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+        Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
   return { distance: R * c, bearing: (toDegrees(Math.atan2(y, x)) + 360) % 360 };
 }
 
-function compassHeading( alpha, beta, gamma ) {
-  var degtorad = Math.PI / 180; // Degree-to-Radian conversion
 
-  var _x = beta  ? beta  * degtorad : 0; // beta value
-  var _y = gamma ? gamma * degtorad : 0; // gamma value
-  var _z = alpha ? alpha * degtorad : 0; // alpha value
+// AR state
 
-  var cX = Math.cos( _x );
-  var cY = Math.cos( _y );
-  var cZ = Math.cos( _z );
-  var sX = Math.sin( _x );
-  var sY = Math.sin( _y );
-  var sZ = Math.sin( _z );
-
-  // Calculate Vx and Vy components
-  var Vx = - cZ * sY - sZ * sX * cY;
-  var Vy = - sZ * sY + cZ * sX * cY;
-
-  // Calculate compass heading
-  var compassHeading = Math.atan( Vx / Vy );
-
-  // Convert compass heading to use whole unit circle
-  if( Vy < 0 ) {
-    compassHeading += Math.PI;
-  } else if( Vx < 0 ) {
-    compassHeading += 2 * Math.PI;
-  }
-
-  return compassHeading * ( 180 / Math.PI ); // Compass Heading (in degrees)
-
-}
-
-
-// AR
 var ar = new $.Machine({
   arCanvas: $('#arGUI')[0],
   renderer: null,
   camera: null,
   scene: null,
-  geom: new THREE.BoxGeometry(1, 1, 1),
+  geom: null,
   material: null,
   object: null,
 
@@ -289,6 +286,8 @@ let startTime = Date.now()
 
 $.targets({
   ar: { // TODO: pause while in map mode
+
+    // Set up AR scene
 
     init () {
       let width = window.innerWidth,
@@ -309,12 +308,16 @@ $.targets({
       this.scene.add(pointLight);
 
       ar.emit('updateMaterial');
-      return ar.emitAsync('buildObject', 'model100').then(() => ar.emitAsync('createObject'))
+      return ar.emitAsync('buildObject', 'model100')
+        .then(() => ar.emitAsync('createObject'))
         .then(() => ar.emit('unpause'))
         .catch(console.log)
       // ar.emitAsync('createObject')
       //   .then(() => ar.emit('unpause'))
     },
+
+
+    // Update scene dimensions
 
     resize () {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -322,12 +325,18 @@ $.targets({
       this.camera.updateProjectionMatrix()
     },
 
+
+    // Generate marker material
+
     updateMaterial () {
       this.material = new THREE.MeshNormalMaterial({
         transparent: true, opacity: .5
       });
       this.material.side = THREE.DoubleSide
     },
+
+
+    // Create marker and locate in scene
 
     createObject () {
       let { geom, material, scene, object } = this,
@@ -348,6 +357,9 @@ $.targets({
       this.object = objnew
     },
 
+
+    // Animate marker in scene, and camera
+
     animate ({alpha, beta, gamma}, fromObs) {
       this.camera.rotation.y = alpha * Math.PI / 180;
       this.camera.rotation.x = beta * Math.PI / 180;
@@ -360,20 +372,23 @@ $.targets({
       //   new THREE.Euler(toRadians(beta), toRadians(alpha), 0));
       // this.camera.setRotationFromQuaternion(quaternion);
 
-			this.object.rotation.x += 0.02 * .2;
-			this.object.rotation.y += 0.0225 * .2;
-			this.object.rotation.z += 0.0175 * .2;
-				// make the cube bounce
-			var dtime	= Date.now() - startTime;
-			this.object.scale.x	= 1 + 0.3*Math.sin(dtime/300);
-			this.object.scale.y	= 1 + 0.3*Math.sin(dtime/300);
-			this.object.scale.z	= 1 + 0.3*Math.sin(dtime/300);
+      this.object.rotation.x += 0.02 * .2;
+      this.object.rotation.y += 0.0225 * .2;
+      this.object.rotation.z += 0.0175 * .2;
+      	// make the cube bounce
+      var dtime	= Date.now() - startTime;
+      this.object.scale.x	= 1 + 0.3*Math.sin(dtime/300);
+      this.object.scale.y	= 1 + 0.3*Math.sin(dtime/300);
+      this.object.scale.z	= 1 + 0.3*Math.sin(dtime/300);
 
 
       this.renderer.render(this.scene, this.camera);
       if (!this.pause && !this.obsFlag) requestAnimationFrame(() => ar.emit('animate', {alpha, beta, gamma}, false));
       this.obsFlag = fromObs
     },
+
+
+    // Handle stopping and starting animation
 
     pause () { this.pause = true },
     unpause () {
@@ -383,36 +398,15 @@ $.targets({
       ar.emit('animate', {}, false)
     },
 
+
+    // Generate marker from glb file
+
     buildObject (name) {
       return new Promise(r => new THREE.GLTFLoader().load(
-      	// resource URL
       	`${name}.glb`,
-      	// called when the resource is loaded
-      	function ( glb ) {
-          console.log(glb)
-          this.scene = glb.scene
-          r()
-      		// scene.add( gltf.scene );
-          //
-      		// gltf.animations; // Array<THREE.AnimationClip>
-      		// gltf.scene; // THREE.Scene
-      		// gltf.scenes; // Array<THREE.Scene>
-      		// gltf.cameras; // Array<THREE.Camera>
-      		// gltf.asset; // Object
-
-      	},
-      	// called while loading is progressing
-      	function ( xhr ) {
-
-      		console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
-
-      	},
-      	// called when loading has errors
-      	function ( error ) {
-
-      		console.log( 'An error happened', error );
-
-      	}
+      	glb => r(this.geom = glb.scene.children[0].geometry),
+      	xhr => console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' ),
+      	e => console.log( 'An error happened', e ) // TODO: fall back to BoxGeometry
       ))
     }
 
