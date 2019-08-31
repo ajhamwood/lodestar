@@ -3,8 +3,12 @@
 var app = new $.Machine({
   map: null,
   mapElement: $('#map')[0],
-  destination: { latitude: null, longitude: null },
+  destination: {
+    latitude: null, longitude: null,
+    distance: null, bearing: null
+  },
   marker: null,
+  selfMarker: null,
   hasCamera: true,
   video: $('video')[0],
   photoCanvas: null,
@@ -13,6 +17,7 @@ var app = new $.Machine({
   heartbeat: false,
   geoIv: 0,
   geo: { latitude: null, longitude: null }
+
 });
 
 
@@ -29,23 +34,26 @@ $.targets({
     ar.emit('resize')
   },
 
-  deviceorientation (e) {
-    var alpha;
-    if (e.webkitCompassHeading) alpha = e.webkitCompassHeading;
-    else {
-      alpha = e.alpha;
-      // if (!window.chrome) alpha += 270
-    }
-    let { beta, gamma } = e;
-    ar.state().rotationObservers.forEach(ofn => ofn({alpha, beta, gamma}))
-  },
-
   app: {
 
     // Begin app at destination selector screen
 
     init () {
-      this.map = initMap();
+      this.map = new ol.Map({
+        target: app.state().mapElement,
+        layers: [
+          new ol.layer.Tile({
+            source: new ol.source.OSM()
+          })
+        ],
+        view: new ol.View({
+          // center: ol.proj.fromLonLat([153.013302, -27.497561]),
+          zoom: 16
+        }),
+        interaction: null
+      });
+      navigator.geolocation.getCurrentPosition(pos =>
+          this.map.getView().setCenter(ol.proj.fromLonLat([pos.coords.longitude, pos.coords.latitude])));
       let photoCanvas = this.photoCanvas = document.createElement('canvas');
       this.photoContext = photoCanvas.getContext('2d');
       app.emit('resize');
@@ -80,13 +88,13 @@ $.targets({
 
     // Draw a marker on the map
 
-    setMarker (lat, lng) {
-      this.marker = new ol.Feature({
+    setMarker (lat, lng, prop) {
+      this[prop] = new ol.Feature({
         geometry: new ol.geom.Point(
           ol.proj.fromLonLat([lng, lat])
         )
       });
-      let vectorSource = new ol.source.Vector({ features: [this.marker] }),
+      let vectorSource = new ol.source.Vector({ features: [this[prop]] }),
           markerVectorLayer = new ol.layer.Vector({ source: vectorSource });
       this.map.addLayer(markerVectorLayer)
     },
@@ -95,9 +103,8 @@ $.targets({
     // Set map zoom to include current and destination locations
 
     setZoom () {
-      let { latitude } = this.destination,
+      let { latitude, distance } = this.destination,
           vmin = Math.min(document.body.clientHeight, document.body.clientWidth) / 2,
-          { distance } = app.distanceBearingFromLatLng(),
           raw = Math.log(vmin * 156543.03392 * Math.cos(latitude * Math.PI / 180) / distance) / Math.LN2,
           zoomLevel = Math.max(Math.min(Math.floor(raw), 20), 1);
       this.map.getView().setZoom(zoomLevel);
@@ -112,7 +119,8 @@ $.targets({
       this.mapElement = $('#destMap')[0];
       //this.map.
       //this.map = initMap(null);
-      app.emit('setMarker', latitude, longitude);
+      app.emit('setMarker', latitude, longitude, 'marker');
+      app.emit('setMarker', latitude, longitude, 'selfMarker');
 
       $('section').forEach(el => el.classList.toggle('active'));
 
@@ -167,6 +175,9 @@ $.targets({
     updateGeo (pos) {
       let { latitude, longitude } = pos.coords;
       this.geo = { latitude, longitude };
+      this.destination = { ...this.destination, ...app.distanceBearingFromLatLng() }
+      this.selfMarker.setGeometry(new ol.geom.Point(ol.proj.fromLonLat([longitude, latitude])))
+      // app.emit('debug', this.destination.distance)
       let olGeo = ol.proj.fromLonLat([longitude, latitude]);
       this.map.getView().setCenter(olGeo);
       app.emit('setZoom');
@@ -179,7 +190,7 @@ $.targets({
     startCamera () {
       if (navigator.mediaDevices.getUserMedia) {
         return navigator.mediaDevices.getUserMedia({
-          video: { width: 4800, height: 6400, facingMode: { exact: 'environment' } }
+          video: { width: 4800, height: 6400/*, facingMode: { exact: 'environment' }*/ }
         }).then(s => {
           this.video.srcObject = s;
           this.video.onloadedmetadata = () => this.video.play();
@@ -212,25 +223,6 @@ $.queries({
     }
   }
 });
-
-
-// Set up OpenLayers map
-
-function initMap (interaction = ol.interaction.defaults()) {
-  return new ol.Map({
-    target: app.state().mapElement,
-    layers: [
-      new ol.layer.Tile({
-        source: new ol.source.OSM()
-      })
-    ],
-    view: new ol.View({
-      center: ol.proj.fromLonLat([153.013302, -27.497561]),
-      zoom: 16
-    }),
-    interaction: null
-  })
-}
 
 
 // Calculate distance and bearing give current and destination latitude and longitude
@@ -276,35 +268,48 @@ var ar = new $.Machine({
   geom: null,
   material: null,
   object: null,
+  deviceOrientation: null,
+  screenOrientation: null,
 
-  rotationObservers: [],
   obsFlag: false,
   pause: null
 });
 
-let startTime = Date.now()
+let startTime = Date.now(),
+    prevTime = Date.now()
 
 $.targets({
+
+  deviceorientation (e) {
+    var alpha;
+    if (e.webkitCompassHeading) alpha = e.webkitCompassHeading;
+    else {
+      alpha = e.alpha;
+      // if (!window.chrome) alpha += 270
+    }
+    let { beta, gamma } = e;
+    // app.emit('debug', alpha, beta, gamma)
+    ar.emit('deviceOrientation', {alpha, beta, gamma})
+  },
+
+  orientationchange (e) {
+    ar.emit('screenOrientation', window.orientation || 0)
+  },
+
   ar: { // TODO: pause while in map mode
 
     // Set up AR scene
 
     init () {
-      let width = window.innerWidth,
-          height = window.innerHeight;
-
       this.scene = new THREE.Scene();
       this.renderer = new THREE.WebGLRenderer({canvas: this.arCanvas, antialias: true, alpha: true});
-      this.camera = new THREE.PerspectiveCamera(60, width / height, .01, 1000);
+      this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, .01, 1000);
       ar.emit('resize');
       this.scene.add(this.camera);
       this.renderer.domElement.id = "renderer";
 
       let pointLight = new THREE.PointLight(0xffffff);
-      //Object.assign(pointLight.position, {x:6,y:5,z:17});
-      pointLight.position.x = 6
-      pointLight.position.y = 5
-      pointLight.position.z = 17
+      Object.assign(pointLight.position, { x: 6, y: 5, z: 17 });
       this.scene.add(pointLight);
 
       ar.emit('updateMaterial');
@@ -325,6 +330,9 @@ $.targets({
       this.camera.updateProjectionMatrix()
     },
 
+    deviceOrientation (v) { this.deviceOrientation = v },
+    screenOrientation (v) { this.screenOrientation = v },
+
 
     // Generate marker material
 
@@ -336,55 +344,34 @@ $.targets({
     },
 
 
+    // Generate marker from glb file
+
+    buildObject (name) { // TODO: Export/load using draco
+      return new Promise(r => new THREE.GLTFLoader().load(
+      	`${name}.glb`,
+      	glb => r(this.geom = glb.scene.children[0].geometry),
+      	xhr => console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' ),
+      	e => console.log( 'An error happened', e ) // TODO: fall back to BoxGeometry
+      ))
+    },
+
+
     // Create marker and locate in scene
 
     createObject () {
       let { geom, material, scene, object } = this,
-          objnew = new THREE.Mesh(geom, material),
-
-          { distance, bearing } = app.distanceBearingFromLatLng();
+          objnew = new THREE.Mesh(geom, material);
       objnew.rotation.set(0, 0, 0);
-      console.log(scene)
+      let {bearing} = app.distanceBearingFromLatLng();
+            objnew.position.x = 5 * Math.cos(bearing);
+            objnew.position.y = 5 * Math.sin(bearing);
       if (object) {
         objnew.rotation = object.rotation;
         objnew.scale = object.scale;
         scene.remove(object)
       }
-      // app.emit('debug', distance)
-      objnew.position.x = 5 * Math.cos(bearing);
-      objnew.position.y = 5 * Math.sin(bearing);
       scene.add(objnew);
       this.object = objnew
-    },
-
-
-    // Animate marker in scene, and camera
-
-    animate ({alpha, beta, gamma}, fromObs) {
-      this.camera.rotation.y = alpha * Math.PI / 180;
-      this.camera.rotation.x = beta * Math.PI / 180;
-
-      // function toRadians(degrees) {
-      //   return degrees * (Math.PI/180)
-      // }
-
-      // var quaternion = new THREE.Quaternion().setFromEuler(
-      //   new THREE.Euler(toRadians(beta), toRadians(alpha), 0));
-      // this.camera.setRotationFromQuaternion(quaternion);
-
-      this.object.rotation.x += 0.02 * .2;
-      this.object.rotation.y += 0.0225 * .2;
-      this.object.rotation.z += 0.0175 * .2;
-      	// make the cube bounce
-      var dtime	= Date.now() - startTime;
-      this.object.scale.x	= 1 + 0.3*Math.sin(dtime/300);
-      this.object.scale.y	= 1 + 0.3*Math.sin(dtime/300);
-      this.object.scale.z	= 1 + 0.3*Math.sin(dtime/300);
-
-
-      this.renderer.render(this.scene, this.camera);
-      if (!this.pause && !this.obsFlag) requestAnimationFrame(() => ar.emit('animate', {alpha, beta, gamma}, false));
-      this.obsFlag = fromObs
     },
 
 
@@ -393,21 +380,53 @@ $.targets({
     pause () { this.pause = true },
     unpause () {
       this.pause = false;
-      this.rotationObservers.push(({alpha, beta, gamma}) =>
-        ar.emit('animate', {alpha, beta, gamma}, true))
-      ar.emit('animate', {}, false)
+      ar.emit('animate')
     },
 
 
-    // Generate marker from glb file
+    // Animate marker in scene, and camera
 
-    buildObject (name) {
-      return new Promise(r => new THREE.GLTFLoader().load(
-      	`${name}.glb`,
-      	glb => r(this.geom = glb.scene.children[0].geometry),
-      	xhr => console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' ),
-      	e => console.log( 'An error happened', e ) // TODO: fall back to BoxGeometry
-      ))
+    animate () {
+      // TODO: use window.orientation
+
+      var { distance, bearing } = app.distanceBearingFromLatLng(),
+          { deviceOrientation, screenOrientation } = this;
+
+      // this.object.position.x = 1.5 * Math.log(distance) * Math.sin(bearing);
+      // this.object.position.y = 1.5 * Math.log(distance) * Math.cos(bearing);
+
+      // this.object.position.x = 5 * Math.cos(bearing)
+      // this.object.position.y = 5 * Math.sin(bearing)
+
+      this.camera.rotation.y = (deviceOrientation.alpha) * Math.PI / 180;
+      this.camera.rotation.x = deviceOrientation.beta * Math.PI / 180;
+      // app.emit('debug', deviceOrientation.alpha)
+      //this.camera.rotation.z = gamma * Math.PI / 180;
+
+
+      // function toRadians(degrees) {
+      //   return degrees * (Math.PI/180)
+      // }
+      //
+      // var quaternion = new THREE.Quaternion().setFromEuler(
+      //   new THREE.Euler(toRadians(beta), toRadians(alpha), 0));
+      // this.camera.setRotationFromQuaternion(quaternion);
+
+      // make the cube bounce
+      var now = Date.now(),
+          Dtime	= now - startTime,
+          dtime = now - prevTime;
+      prevTime = now;
+      this.object.rotation.x += 0.02 * dtime / 20;
+      this.object.rotation.y += 0.0225 * dtime / 20;
+      this.object.rotation.z += 0.0175 * dtime / 20;
+      this.object.scale.x	= 1 + 0.1*Math.sin(Dtime/300);
+      this.object.scale.y	= 1 + 0.1*Math.sin(Dtime/300);
+      this.object.scale.z	= 1 + 0.1*Math.sin(Dtime/300);
+
+
+      this.renderer.render(this.scene, this.camera);
+      if (!this.pause) requestAnimationFrame(() => ar.emit('animate'));
     }
 
   }
